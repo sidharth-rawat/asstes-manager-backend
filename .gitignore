@@ -1,3 +1,6 @@
+# Claude Code local config (AI assistant workspace, prompts, memory)
+.claude/
+
 # Logs
 logs
 *.log

@@ -3,6 +3,9 @@ require('dotenv').config();
 const express = require('express');
 const mongoose = require('mongoose');
 const cors = require('cors');
+const helmet = require('helmet');
+const rateLimit = require('express-rate-limit');
+const mongoSanitize = require('express-mongo-sanitize');
 
 const userRoutes = require('./routes/users');
 const assetRoutes = require('./routes/assets');
@@ -19,6 +22,36 @@ if (missing.length > 0) {
 
 // ─── Express app setup ────────────────────────────────────────────────────────
 const app = express();
+
+// ─── Security headers (helmet) ────────────────────────────────────────────────
+app.use(helmet());
+
+// ─── Rate limiting ────────────────────────────────────────────────────────────
+const RATE_LIMIT_WINDOW_MS = Number(process.env.RATE_LIMIT_WINDOW_MS) || 15 * 60 * 1000; // 15 min
+const RATE_LIMIT_MAX = Number(process.env.RATE_LIMIT_MAX) || 100;
+const AUTH_RATE_LIMIT_MAX = Number(process.env.AUTH_RATE_LIMIT_MAX) || 10;
+
+const isTest = process.env.NODE_ENV === 'test';
+
+// General API rate limiter — 100 req / 15 min per IP
+const apiLimiter = rateLimit({
+  windowMs: RATE_LIMIT_WINDOW_MS,
+  max: RATE_LIMIT_MAX,
+  standardHeaders: true,  // Return RateLimit-* headers
+  legacyHeaders: false,
+  message: { success: false, message: 'Too many requests. Please try again later.' },
+  skip: () => isTest,
+});
+
+// Strict auth limiter — 10 attempts / 15 min per IP (brute-force protection)
+const authLimiter = rateLimit({
+  windowMs: RATE_LIMIT_WINDOW_MS,
+  max: AUTH_RATE_LIMIT_MAX,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { success: false, message: 'Too many authentication attempts. Please try again later.' },
+  skip: () => isTest,
+});
 
 // CORS — parse comma-separated origin list from env
 const allowedOrigins = (process.env.CORS_ORIGINS || '')
@@ -43,6 +76,15 @@ app.use(
 
 app.use(express.json({ limit: '1mb' }));
 app.use(express.urlencoded({ extended: true, limit: '1mb' }));
+
+// ─── MongoDB operator injection sanitization ──────────────────────────────────
+// Strips keys containing '$' or '.' from req.body, req.params, req.query
+app.use(mongoSanitize());
+
+// ─── Apply rate limiters ──────────────────────────────────────────────────────
+app.use('/api/', apiLimiter);
+app.use('/api/users/login', authLimiter);
+app.use('/api/users/register', authLimiter);
 
 // ─── Request logger (simple, no external deps) ───────────────────────────────
 if (process.env.NODE_ENV !== 'test') {
