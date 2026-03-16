@@ -65,6 +65,48 @@ describe('GET /api/assets', () => {
     expect(res.body.pagination.total).toBe(2);
   });
 
+  test('searches by name (case-insensitive partial match)', async () => {
+    const { token } = await createViewer();
+    await createAsset({ name: 'Dell PowerEdge R750', serialNo: 'SRV-DELL-001' });
+    await createAsset({ name: 'HP LaserJet Pro', serialNo: 'PR-HP-001' });
+
+    // lowercase partial — should match Dell asset
+    const res = await request(app)
+      .get('/api/assets?search=dell')
+      .set('Authorization', `Bearer ${token}`);
+
+    expect(res.status).toBe(200);
+    expect(res.body.data).toHaveLength(1);
+    expect(res.body.data[0].name).toBe('Dell PowerEdge R750');
+  });
+
+  test('searches by serial number (case-insensitive partial match)', async () => {
+    const { token } = await createViewer();
+    await createAsset({ name: 'HP Printer', serialNo: 'PR-HP-001' });
+    await createAsset({ name: 'Dell Server', serialNo: 'SRV-DELL-001' });
+
+    // Partial serial, hyphen included
+    const res = await request(app)
+      .get('/api/assets?search=pr-hp')
+      .set('Authorization', `Bearer ${token}`);
+
+    expect(res.status).toBe(200);
+    expect(res.body.data).toHaveLength(1);
+    expect(res.body.data[0].serialNo).toBe('PR-HP-001');
+  });
+
+  test('search returns empty when no match', async () => {
+    const { token } = await createViewer();
+    await createAsset({ name: 'Cisco Switch' });
+
+    const res = await request(app)
+      .get('/api/assets?search=zzznomatch')
+      .set('Authorization', `Bearer ${token}`);
+
+    expect(res.status).toBe(200);
+    expect(res.body.data).toHaveLength(0);
+  });
+
   test('filters by status', async () => {
     const { token } = await createViewer();
     await createAsset({ status: 'active' });

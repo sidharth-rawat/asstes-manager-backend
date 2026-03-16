@@ -216,7 +216,10 @@ router.get(
         }
       }
 
-      if (search) filter.$text = { $search: search };
+      if (search) {
+        const re = new RegExp(search.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i');
+        filter.$or = [{ name: re }, { serialNo: re }, { manufacturer: re }, { model: re }];
+      }
 
       const sortOrder = order === 'asc' ? 1 : -1;
       const allowedSort = ['name', 'serialNo', 'category', 'status', 'value', 'purchaseDate', 'createdAt'];
